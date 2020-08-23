@@ -31,8 +31,6 @@ class DoxieScanner:
     # Nine is reasonable in this case.
 
     basepath = None
-    username = "doxie"  # This is always the same according to API docs
-    password = None
 
     # These attributes will be populated by _load_hello_attributes
     model = None
@@ -45,9 +43,21 @@ class DoxieScanner:
     # so it's lazily loaded and cached via a @property
     _firmware = None
 
-    def __init__(self, basepath, load_attributes=True):
+    def __init__(self, basepath, password=None, load_attributes=True):
+        """Create a client session to the Doxie API.
+
+        Arguments:
+            basepath -- the base path to the Doxie API
+            password -- (optional) the password to authenticate with
+        """
+
         self.basepath = basepath
         self.session = requests.Session()
+
+        # Authentication for Doxie API
+        if password:
+            self.session.auth = ('doxie', password)
+
         if load_attributes:
             self._load_hello_attributes()
 
@@ -113,24 +123,14 @@ class DoxieScanner:
     def _get_url(self, url, stream=False):
         """
         Performs a GET to a URL, including authentication
-        if self.password is set.
+        if required.
         Checks that the response status code is 200 before
         returning the response.
         """
-        response = self.session.get(url, auth=self._get_auth(), stream=stream)
+        response = self.session.get(url, stream=stream)
         if response.status_code != requests.codes.ok:
             response.raise_for_status()
         return response
-
-    def _get_auth(self):
-        """
-        Returns a (username, password) tuple if self.password is set, otherwise
-        None.
-        Suitable for passing to requests' 'auth' kwarg.
-        """
-        return (
-            self.username, self.password
-        ) if self.password is not None else None
 
     def _load_hello_attributes(self):
         """
@@ -147,7 +147,7 @@ class DoxieScanner:
         self.firmware_wifi = attributes['firmwareWiFi']
         if self.mode == "Client":
             self.network = attributes['network']
-        if attributes['hasPassword']:
+        if attributes['hasPassword'] and not self.session.auth:
             self._load_password()
 
     def _load_password(self):
@@ -161,7 +161,7 @@ class DoxieScanner:
         config = ConfigParser()
         config.read(config_path)
         try:
-            self.password = config[self.mac]['password']
+            self.session.auth = ('doxie', config[self.mac]['password'])
         except KeyError as err:
             raise Exception(
                 "Couldn't find password for Doxie {} in {}".format(
@@ -265,9 +265,8 @@ class DoxieScanner:
         if not path.startswith("/scans"):
             path = "/scans{}".format(path)
         url = self._api_url(path)
-        auth = self._get_auth()
         for attempt in range(retries):
-            response = self.session.delete(url, auth=auth)
+            response = self.session.delete(url)
             if response.status_code == requests.codes.no_content:
                 return True
             if attempt < retries-1:
@@ -290,10 +289,8 @@ class DoxieScanner:
         was deleted, it seems.
         """
         url = self._api_url("/scans/delete.json")
-        auth = self._get_auth()
         for attempt in range(retries):
-            response = self.session.post(url, auth=auth,
-                                         data=json.dumps(paths))
+            response = self.session.post(url, data=json.dumps(paths))
             if response.status_code == requests.codes.no_content:
                 return True
             if attempt < retries-1:
