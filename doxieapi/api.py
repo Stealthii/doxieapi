@@ -30,7 +30,7 @@ class DoxieScanner:
     # pylint: disable=too-many-instance-attributes
     # Nine is reasonable in this case.
 
-    url = None
+    basepath = None
     username = "doxie"  # This is always the same according to API docs
     password = None
 
@@ -45,8 +45,8 @@ class DoxieScanner:
     # so it's lazily loaded and cached via a @property
     _firmware = None
 
-    def __init__(self, url, load_attributes=True):
-        self.url = url
+    def __init__(self, basepath, load_attributes=True):
+        self.basepath = basepath
         self.session = requests.Session()
         if load_attributes:
             self._load_hello_attributes()
@@ -61,7 +61,7 @@ class DoxieScanner:
         'Doxie model DX250 (Doxie_00AAFF) at http://192.168.100.1:8080/'
         """
         return "Doxie model {} ({}) at {}".format(
-            self.model, self.name, self.url)
+            self.model, self.name, self.basepath)
 
     def __repr__(self):
         """
@@ -86,8 +86,8 @@ class DoxieScanner:
             if DOXIE_SSDP_SERVICE not in response.usn:
                 continue  # skip over non-Doxie responses
             scheme, netloc, _, _, _, _ = urlparse(response.location)
-            url = urlunparse((scheme, netloc, '/', '', '', ''))
-            doxies.append(DoxieScanner(url))
+            basepath = urlunparse((scheme, netloc, '/', '', '', ''))
+            doxies.append(DoxieScanner(basepath))
         return doxies
 
     def _api_url(self, path):
@@ -97,7 +97,7 @@ class DoxieScanner:
         >>> doxie._api_url("/networks/available.json")
         'http://192.168.100.1:8080/networks/available.json'
         """
-        return urljoin(self.url, path)
+        return urljoin(self.basepath, path)
 
     def _api_call(self, path, return_json=True):
         """
