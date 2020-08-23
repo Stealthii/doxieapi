@@ -47,6 +47,7 @@ class DoxieScanner:
 
     def __init__(self, url, load_attributes=True):
         self.url = url
+        self.session = requests.Session()
         if load_attributes:
             self._load_hello_attributes()
 
@@ -116,7 +117,7 @@ class DoxieScanner:
         Checks that the response status code is 200 before
         returning the response.
         """
-        response = requests.get(url, auth=self._get_auth(), stream=stream)
+        response = self.session.get(url, auth=self._get_auth(), stream=stream)
         if response.status_code != requests.codes.ok:
             response.raise_for_status()
         return response
@@ -266,7 +267,7 @@ class DoxieScanner:
         url = self._api_url(path)
         auth = self._get_auth()
         for attempt in range(retries):
-            response = requests.delete(url, auth=auth)
+            response = self.session.delete(url, auth=auth)
             if response.status_code == requests.codes.no_content:
                 return True
             if attempt < retries-1:
@@ -291,7 +292,8 @@ class DoxieScanner:
         url = self._api_url("/scans/delete.json")
         auth = self._get_auth()
         for attempt in range(retries):
-            response = requests.post(url, auth=auth, data=json.dumps(paths))
+            response = self.session.post(url, auth=auth,
+                                         data=json.dumps(paths))
             if response.status_code == requests.codes.no_content:
                 return True
             if attempt < retries-1:
