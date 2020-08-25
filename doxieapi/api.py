@@ -8,13 +8,13 @@ An API client implementation for the Doxie Scanner API.
 """
 
 import os
-import time
 import json
 from configparser import ConfigParser
 from http.cookiejar import http2time
 from urllib.parse import urlparse, urlunparse, urljoin
 
 import requests
+from urllib3 import Retry
 
 from . import ssdp
 
@@ -28,6 +28,30 @@ DOXIE_ATTR_MAP = {
 
 # Scans are downloaded in chunks of this many bytes:
 DOWNLOAD_CHUNK_SIZE = 1024*8
+
+
+def requests_retry_session(
+        retries=3,
+        backoff_factor=0.3,
+        status_forcelist=(401, 403),
+        session=None,
+):
+    """A session handler for the Doxie scanner API.
+
+    This session will retry requests based on configured parameters.
+    """
+    session = session or requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+    )
+    adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
 
 
 class DoxieResponse(requests.Response):
@@ -65,7 +89,7 @@ class DoxieScanner:
         """
 
         self.basepath = basepath
-        self.session = requests.Session()
+        self.session = requests_retry_session()
 
         # Authentication for Doxie API
         if password:
@@ -274,7 +298,7 @@ class DoxieScanner:
             output_files.append(self.download_scan(scan['name'], output_dir))
         return output_files
 
-    def delete_scan(self, name, retries=3, timeout=5):
+    def delete_scan(self, name):
         """
         Deletes a scan from the Doxie.
         This method may be slow; from the API docs:
@@ -282,20 +306,12 @@ class DoxieScanner:
            storage must be obtained and released. Deleting may fail if the lock
            cannot be obtained (e.g., the scanner is busy), so consider retrying
            on failure conditions.
-        This method will attempt the deletion multiple times with a timeout
-        between attempts - controlled by the retries and timeout (seconds)
-        params.
         Returns a boolean indicating whether the deletion was successful.
         """
-        for attempt in range(retries):
-            response = self._delete('scans' + name)
-            if response.status_code == requests.codes.no_content:
-                return True
-            if attempt < retries-1:
-                time.sleep(timeout)
-        return False
+        response = self._delete('scans' + name)
+        return response.status_code == requests.codes.no_content
 
-    def delete_scans(self, names, retries=3, timeout=5):
+    def delete_scans(self, names):
         """
         Deletes multiple scans from the Doxie.
         This method may be slow; from the API docs:
@@ -310,10 +326,5 @@ class DoxieScanner:
         The deletion is considered successful by the Doxie if at least one scan
         was deleted, it seems.
         """
-        for attempt in range(retries):
-            response = self._post("scans/delete.json", data=names)
-            if response.status_code == requests.codes.no_content:
-                return True
-            if attempt < retries-1:
-                time.sleep(timeout)
-        return False
+        response = self._post("scans/delete.json", data=names)
+        return response.status_code == requests.codes.no_content
