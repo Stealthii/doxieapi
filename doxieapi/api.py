@@ -56,6 +56,17 @@ class DoxieSession(requests.Session):
         self.mount('http://', adapter)
         self.mount('https://', adapter)
 
+    def request(self, **kwargs):
+        """Sends a request to a Doxie API instance.
+        Returns a DoxieResponse object.
+
+        """
+        response = super().request(**kwargs)
+        response.__class__ = DoxieResponse
+        response.raise_for_status()  # Raise errors as default behavior
+
+        return response
+
 
 class DoxieResponse(requests.Response):
     """A Response from a Doxie API call."""
@@ -167,15 +178,10 @@ class DoxieScanner:
     def _get(self, path, **kwargs):
         """Send a GET request to an endpoint."""
 
-        response = self.session.get(
+        return self.session.get(
             urljoin(self.basepath, path),
             **kwargs,
         )
-
-        response.__class__ = DoxieResponse
-        response.raise_for_status()
-
-        return response
 
     def _post(self, path, **kwargs):
         """Send a POST request to an endpoint."""
@@ -184,28 +190,18 @@ class DoxieScanner:
         if kwargs.get('data'):
             kwargs['data'] = json.dumps(kwargs.get('data'))
 
-        response = self.session.post(
+        return self.session.post(
             urljoin(self.basepath, path),
             **kwargs,
         )
-
-        response.__class__ = DoxieResponse
-        response.raise_for_status()
-
-        return response
 
     def _delete(self, path, **kwargs):
         """Send a DELETE request to an endpoint."""
 
-        response = self.session.delete(
+        return self.session.delete(
             urljoin(self.basepath, path),
             **kwargs,
         )
-
-        response.__class__ = DoxieResponse
-        response.raise_for_status()
-
-        return response
 
     def _fetch_attributes(self, attribute=None):
         """
