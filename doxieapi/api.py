@@ -239,13 +239,19 @@ class DoxieScanner:
         response = self.session.get("restart.json")
         return response.status_code == requests.codes.no_content
 
-    def download_scan(self, name, output_dir):
+    def download_scan(self, name=None, output_dir=os.getcwd()):
         """
         Downloads a scan at the given name to the given local dir,
         preserving the filename.
         Will raise an exception if the target file already exists.
         Returns the path of the downloaded file.
+
+        If name not provided, download most recent scan.
+        If output_dir not provided, default to current directory.
+
         """
+        if not name:
+            name = self.recent  # Get most recent scan
         response = self.session.get('scans' + name, stream=True)
         output_path = os.path.join(output_dir, os.path.basename(name))
         if os.path.isfile(output_path):
@@ -259,15 +265,21 @@ class DoxieScanner:
 
         return output_path
 
-    def download_scans(self, output_dir):
+    def download_scans(self, names=None, output_dir=os.getcwd()):
         """
-        Downloads all available scans from this Doxie to the specified dir,
+        Downloads a list of scans from this Doxie to the specified dir,
         preserving the filenames from the scanner.
         Returns a list of the downloaded files.
+
+        If names is not provided, all scans will be downloaded.
+        If output_dir not provided, default to current directory.
+
         """
+        if not names:
+            names = [scan['name'] for scan in self.scans]
         output_files = []
-        for scan in self.scans:
-            output_files.append(self.download_scan(scan['name'], output_dir))
+        for name in names:
+            output_files.append(self.download_scan(name, output_dir))
         return output_files
 
     def delete_scan(self, name):
