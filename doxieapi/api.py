@@ -30,28 +30,31 @@ DOXIE_ATTR_MAP = {
 DOWNLOAD_CHUNK_SIZE = 1024*8
 
 
-def requests_retry_session(
-        retries=3,
-        backoff_factor=0.3,
-        status_forcelist=(401, 403),
-        session=None,
-):
-    """A session handler for the Doxie scanner API.
+class DoxieSession(requests.Session):
+    """A session handler for the Doxie scanner API."""
 
-    This session will retry requests based on configured parameters.
-    """
-    session = session or requests.Session()
-    retry = Retry(
-        total=retries,
-        read=retries,
-        connect=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=status_forcelist,
-    )
-    adapter = requests.adapters.HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
+    def __init__(
+            self,
+            retries=3,
+            backoff_factor=0.3,
+            **kwargs,
+    ):
+        """Initializes a Doxie session.
+
+        This session will retry requests based on configured parameters.
+
+        """
+        super().__init__(**kwargs)
+        retry = Retry(
+            total=retries,
+            read=retries,
+            connect=retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=(401, 403),
+        )
+        adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+        self.mount('http://', adapter)
+        self.mount('https://', adapter)
 
 
 class DoxieResponse(requests.Response):
@@ -89,7 +92,7 @@ class DoxieScanner:
         """
 
         self.basepath = basepath
-        self.session = requests_retry_session()
+        self.session = DoxieSession()
 
         # Authentication for Doxie API
         if password:
