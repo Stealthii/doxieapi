@@ -8,7 +8,6 @@ An API client implementation for the Doxie Scanner API.
 """
 
 import os
-import json
 from configparser import ConfigParser
 from http.cookiejar import http2time
 from urllib.parse import urlparse, urlunparse, urljoin
@@ -33,8 +32,11 @@ DOWNLOAD_CHUNK_SIZE = 1024*8
 class DoxieSession(requests.Session):
     """A session handler for the Doxie scanner API."""
 
+    basepath = None
+
     def __init__(
             self,
+            basepath,
             retries=3,
             backoff_factor=0.3,
             **kwargs,
@@ -45,6 +47,7 @@ class DoxieSession(requests.Session):
 
         """
         super().__init__(**kwargs)
+        self.basepath = basepath
         retry = Retry(
             total=retries,
             read=retries,
@@ -56,12 +59,13 @@ class DoxieSession(requests.Session):
         self.mount('http://', adapter)
         self.mount('https://', adapter)
 
-    def request(self, **kwargs):
+    def request(self, method, path, **kwargs):
         """Sends a request to a Doxie API instance.
         Returns a DoxieResponse object.
 
         """
-        response = super().request(**kwargs)
+        url = urljoin(self.basepath, path)
+        response = super().request(method, url, **kwargs)
         response.__class__ = DoxieResponse
         response.raise_for_status()  # Raise errors as default behavior
 
@@ -88,8 +92,6 @@ class DoxieResponse(requests.Response):
 class DoxieScanner:
     """A client for the Doxie Scanner."""
 
-    basepath = None
-
     # These attributes will be populated by 'hello' or 'hello_extra' API calls.
     # By default we will pre-populate those from 'hello'.
     _attributes = {}  # type: dict
@@ -102,8 +104,7 @@ class DoxieScanner:
             password -- (optional) the password to authenticate with
         """
 
-        self.basepath = basepath
-        self.session = DoxieSession()
+        self.session = DoxieSession(basepath=basepath)
 
         # Authentication for Doxie API
         if password:
@@ -125,7 +126,7 @@ class DoxieScanner:
         'Doxie model DX250 (Doxie_00AAFF) at http://192.168.100.1:8080/'
         """
         return "Doxie model {} ({}) at {}".format(
-            self.model, self.name, self.basepath)
+            self.model, self.name, self.session.basepath)
 
     def __repr__(self):
         """
@@ -175,44 +176,16 @@ class DoxieScanner:
             doxies.append(DoxieScanner(basepath))
         return doxies
 
-    def _get(self, path, **kwargs):
-        """Send a GET request to an endpoint."""
-
-        return self.session.get(
-            urljoin(self.basepath, path),
-            **kwargs,
-        )
-
-    def _post(self, path, **kwargs):
-        """Send a POST request to an endpoint."""
-
-        # Encode JSON data
-        if kwargs.get('data'):
-            kwargs['data'] = json.dumps(kwargs.get('data'))
-
-        return self.session.post(
-            urljoin(self.basepath, path),
-            **kwargs,
-        )
-
-    def _delete(self, path, **kwargs):
-        """Send a DELETE request to an endpoint."""
-
-        return self.session.delete(
-            urljoin(self.basepath, path),
-            **kwargs,
-        )
-
     def _fetch_attributes(self, attribute=None):
         """
         Retrieves attributes from the 'hello' or 'hello_extra' API calls.
         If 'attribute' provided, we will attempt to load it, and raise an error
         if not found.
         """
-        self._attributes.update(self._get("hello.json").json())
+        self._attributes.update(self.session.get("hello.json").json())
         if attribute and attribute not in self._attributes:
             # Additional call for more information
-            self._attributes.update(self._get("hello_extra.json").json())
+            self._attributes.update(self.session.get("hello_extra.json").json())
 
         if attribute:
             # Raises KeyError if doesn't exist
@@ -243,7 +216,7 @@ class DoxieScanner:
         """
         Returns a list of scans available on the Doxie
         """
-        return self._get("scans.json").json()
+        return self.session.get("scans.json").json()
 
     @property
     def recent(self):
@@ -252,7 +225,7 @@ class DoxieScanner:
         This seems to be cached on the Doxie and may refer to a scan
         which has subsequently been deleted.
         """
-        response = self._get("scans/recent.json")
+        response = self.session.get("scans/recent.json")
         if response.status_code == requests.codes.no_content:
             # No recent scan
             return None
@@ -263,7 +236,7 @@ class DoxieScanner:
         """
         Restarts the wifi on the Doxie
         """
-        response = self._get("restart.json")
+        response = self.session.get("restart.json")
         return response.status_code == requests.codes.no_content
 
     def download_scan(self, name, output_dir):
@@ -273,7 +246,7 @@ class DoxieScanner:
         Will raise an exception if the target file already exists.
         Returns the path of the downloaded file.
         """
-        response = self._get('scans' + name, stream=True)
+        response = self.session.get('scans' + name, stream=True)
         output_path = os.path.join(output_dir, os.path.basename(name))
         if os.path.isfile(output_path):
             raise FileExistsError(output_path)
@@ -307,7 +280,7 @@ class DoxieScanner:
            on failure conditions.
         Returns a boolean indicating whether the deletion was successful.
         """
-        response = self._delete('scans' + name)
+        response = self.session.delete('scans' + name)
         return response.status_code == requests.codes.no_content
 
     def delete_scans(self, names):
@@ -325,5 +298,5 @@ class DoxieScanner:
         The deletion is considered successful by the Doxie if at least one scan
         was deleted, it seems.
         """
-        response = self._post("scans/delete.json", data=names)
+        response = self.session.post("scans/delete.json", json=names)
         return response.status_code == requests.codes.no_content
