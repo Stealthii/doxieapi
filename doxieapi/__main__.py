@@ -38,7 +38,9 @@ def main(servers=None, delete=False, output_dir=None):
         print("Downloading {} scans...".format(len(names)))
         saves = [
             os.path.basename(name)
-            for name in doxie.download_scans(names, output_dir)
+            for name in doxie.download_scans(
+                names, output_dir, prefix_name=True
+            )
         ]
         for scan in saves:
             print("Saved {}".format(scan))
@@ -47,8 +49,9 @@ def main(servers=None, delete=False, output_dir=None):
         if delete:
             # Only delete files we have successfully downloaded
             names_to_delete = [
-                name for name in names
-                if name.endswith(tuple(saves))
+                name for name in names if name.endswith(tuple(
+                    save.split('_').pop() for save in saves
+                ))
             ]
             print("Deleting {} successfully downloaded scans...".format(
                 len(names_to_delete)))

@@ -239,7 +239,8 @@ class DoxieScanner:
         response = self.session.get("restart.json")
         return response.status_code == requests.codes.no_content
 
-    def download_scan(self, name=None, output_dir=os.getcwd()):
+    def download_scan(self, name=None, output_dir=os.getcwd(),
+                      prefix_name=False):
         """
         Downloads a scan at the given name to the given local dir,
         preserving the filename.
@@ -248,12 +249,16 @@ class DoxieScanner:
 
         If name not provided, download most recent scan.
         If output_dir not provided, default to current directory.
+        If prefix_name is True, prepend the scanners name to filename.
 
         """
         if not name:
             name = self.recent  # Get most recent scan
         response = self.session.get('scans' + name, stream=True)
-        output_path = os.path.join(output_dir, os.path.basename(name))
+        filename = os.path.basename(name)
+        if prefix_name:
+            filename = '{}_{}'.format(self.name, filename)
+        output_path = os.path.join(output_dir, filename)
         if os.path.isfile(output_path):
             raise FileExistsError(output_path)
         with open(output_path, 'wb') as output:
@@ -265,7 +270,8 @@ class DoxieScanner:
 
         return output_path
 
-    def download_scans(self, names=None, output_dir=os.getcwd()):
+    def download_scans(self, names=None, output_dir=os.getcwd(),
+                       prefix_name=False):
         """
         Downloads a list of scans from this Doxie to the specified dir,
         preserving the filenames from the scanner.
@@ -273,13 +279,15 @@ class DoxieScanner:
 
         If names is not provided, all scans will be downloaded.
         If output_dir not provided, default to current directory.
+        If prefix_name is True, prepend the scanners name to filenames.
 
         """
         if not names:
             names = [scan['name'] for scan in self.scans]
         output_files = []
         for name in names:
-            output_files.append(self.download_scan(name, output_dir))
+            output_files.append(self.download_scan(
+                name, output_dir, prefix_name))
         return output_files
 
     def delete_scan(self, name):
